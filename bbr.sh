@@ -4,7 +4,6 @@ set -e
 
 echo "==> Updating system packages"
 apt update
-apt -y upgrade
 
 echo "==> Installing linux-image-amd64"
 apt -y install linux-image-amd64

@@ -119,6 +119,65 @@ EOF
 echo "==> Ensuring nf_conntrack loads at boot"
 echo nf_conntrack > /etc/modules-load.d/conntrack.conf
 
+### ==============================
+### AUTO TCP TUNING (RAM + SWAP)
+### ==============================
+
+echo "==> Detecting memory..."
+
+RAM_MB=$(free -m | awk '/^Mem:/ {print $2}')
+SWAP_MB=$(free -m | awk '/^Swap:/ {print $2}')
+
+TOTAL_MB=$((RAM_MB + SWAP_MB))
+
+echo "RAM:  ${RAM_MB}MB"
+echo "Swap: ${SWAP_MB}MB"
+echo "Total usable memory: ${TOTAL_MB}MB"
+
+# Безопасный расчёт orphan сокетов
+# 1 orphan ≈ ~64KB worst case
+# Берём 5% от общей памяти
+
+SAFE_MEMORY_FOR_TCP=$((TOTAL_MB * 5 / 100))
+ORPHAN_LIMIT=$((SAFE_MEMORY_FOR_TCP * 1024 / 64))
+
+# Ограничим разумным максимумом
+if [ "$ORPHAN_LIMIT" -gt 262144 ]; then
+    ORPHAN_LIMIT=262144
+fi
+
+# Минимум тоже нужен
+if [ "$ORPHAN_LIMIT" -lt 16384 ]; then
+    ORPHAN_LIMIT=16384
+fi
+
+# TIME_WAIT делаем чуть больше orphan
+TW_BUCKETS=$((ORPHAN_LIMIT * 2))
+
+echo "Calculated tcp_max_orphans: $ORPHAN_LIMIT"
+echo "Calculated tcp_max_tw_buckets: $TW_BUCKETS"
+
+SYSCTL_FILE="/etc/sysctl.d/99-proxy.conf"
+
+add_or_update() {
+    KEY=$1
+    VALUE=$2
+    if grep -q "^$KEY" "$SYSCTL_FILE" 2>/dev/null; then
+        sed -i "s|^$KEY.*|$KEY = $VALUE|" "$SYSCTL_FILE"
+    else
+        echo "$KEY = $VALUE" >> "$SYSCTL_FILE"
+    fi
+}
+
+echo "==> Applying TCP optimizations"
+
+add_or_update net.ipv4.tcp_max_orphans $ORPHAN_LIMIT
+add_or_update net.ipv4.tcp_max_tw_buckets $TW_BUCKETS
+add_or_update net.ipv4.tcp_fin_timeout 15
+add_or_update net.ipv4.tcp_tw_reuse 1
+add_or_update net.core.somaxconn 65535
+add_or_update net.ipv4.tcp_max_syn_backlog 262144
+
 modprobe nf_conntrack || true
 systemctl restart systemd-sysctl || true
 
@@ -129,6 +188,8 @@ echo
 echo "==> Verification"
 lsmod | grep conntrack || true
 cat /proc/sys/net/netfilter/nf_conntrack_max || true
+cat /proc/sys/net/ipv4/tcp_max_orphans
+cat /proc/sys/net/ipv4/tcp_max_tw_buckets
 
 echo
 echo "==> Done."

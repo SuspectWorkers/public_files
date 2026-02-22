@@ -134,19 +134,14 @@ echo "RAM:  ${RAM_MB}MB"
 echo "Swap: ${SWAP_MB}MB"
 echo "Total usable memory: ${TOTAL_MB}MB"
 
-# Безопасный расчёт orphan сокетов
-# 1 orphan ≈ ~64KB worst case
-# Берём 5% от общей памяти
+# Формула: 32 orphan на 1MB RAM
+ORPHAN_LIMIT=$((RAM_MB * 32))
 
-SAFE_MEMORY_FOR_TCP=$((TOTAL_MB * 5 / 100))
-ORPHAN_LIMIT=$((SAFE_MEMORY_FOR_TCP * 1024 / 64))
-
-# Ограничим разумным максимумом
+# Ограничения
 if [ "$ORPHAN_LIMIT" -gt 262144 ]; then
     ORPHAN_LIMIT=262144
 fi
 
-# Минимум тоже нужен
 if [ "$ORPHAN_LIMIT" -lt 16384 ]; then
     ORPHAN_LIMIT=16384
 fi

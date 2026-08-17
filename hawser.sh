@@ -12,7 +12,6 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-HAWSER_USER="hawser"
 HAWSER_HOME="/var/lib/hawser"
 CONFIG_DIR="/etc/hawser"
 CONFIG_FILE="${CONFIG_DIR}/config"
@@ -52,13 +51,6 @@ if [[ -z "$DOCKHAND_SERVER_URL" || -z "$TOKEN" ]]; then
   exit 1
 fi
 
-# --- dedicated service account ------------------------------------------------
-if ! id "$HAWSER_USER" &>/dev/null; then
-  echo "==> Creating service user '$HAWSER_USER'"
-  useradd --system --home-dir "$HAWSER_HOME" --create-home --shell /usr/sbin/nologin "$HAWSER_USER"
-fi
-usermod -aG docker "$HAWSER_USER"
-
 # --- arch / os detection -------------------------------------------------------
 OS="linux"
 ARCH_RAW=$(uname -m)
@@ -89,20 +81,20 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/hawser.tar.gz"
 tar -xzf "$TMP_DIR/hawser.tar.gz" -C "$TMP_DIR"
 install -m 755 "$TMP_DIR/hawser" "${INSTALL_DIR}/hawser"
- 
+
 # --- directories ---------------------------------------------------------------
 echo "==> Creating directories"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$STACKS_DIR"
 mkdir -p "${HAWSER_HOME}/.docker"
- 
+
 # --- config file (Edge mode) ----------------------------------------------------
 if [[ -f "$CONFIG_FILE" ]]; then
   BACKUP="${CONFIG_FILE}.bak.$(date +%s)"
   echo "==> Existing config found, backing up to ${BACKUP}"
   cp "$CONFIG_FILE" "$BACKUP"
 fi
- 
+
 echo "==> Writing ${CONFIG_FILE}"
 cat > "$CONFIG_FILE" <<EOF
 # Hawser Configuration - Edge Mode
@@ -113,7 +105,7 @@ TOKEN=${TOKEN}
 BIND_ADDRESS=127.0.0.1
 EOF
 chmod 600 "$CONFIG_FILE"
- 
+
 # --- systemd unit ----------------------------------------------------------------
 echo "==> Installing systemd service"
 cat > /etc/systemd/system/hawser.service <<EOF
@@ -123,7 +115,7 @@ Documentation=https://github.com/Finsys/hawser
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
- 
+
 [Service]
 Type=simple
 ExecStart=${INSTALL_DIR}/hawser
@@ -132,20 +124,20 @@ RestartSec=10
 EnvironmentFile=${CONFIG_FILE}
 Environment=DOCKER_CONFIG=${HAWSER_HOME}/.docker
 Environment=HOME=${HAWSER_HOME}
- 
+
 # Security hardening
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/run/docker.sock ${STACKS_DIR} ${HAWSER_HOME} /tmp
- 
+
 [Install]
 WantedBy=multi-user.target
 EOF
- 
+
 systemctl daemon-reload
 systemctl enable --now hawser
- 
+
 echo ""
 echo "Hawser installed and running in Edge mode."
 echo "  Config:  ${CONFIG_FILE}"

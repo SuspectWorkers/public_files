@@ -89,21 +89,20 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/hawser.tar.gz"
 tar -xzf "$TMP_DIR/hawser.tar.gz" -C "$TMP_DIR"
 install -m 755 "$TMP_DIR/hawser" "${INSTALL_DIR}/hawser"
-
+ 
 # --- directories ---------------------------------------------------------------
 echo "==> Creating directories"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$STACKS_DIR"
 mkdir -p "${HAWSER_HOME}/.docker"
-chown -R "${HAWSER_USER}:${HAWSER_USER}" "$HAWSER_HOME" "$STACKS_DIR"
-
+ 
 # --- config file (Edge mode) ----------------------------------------------------
 if [[ -f "$CONFIG_FILE" ]]; then
   BACKUP="${CONFIG_FILE}.bak.$(date +%s)"
   echo "==> Existing config found, backing up to ${BACKUP}"
   cp "$CONFIG_FILE" "$BACKUP"
 fi
-
+ 
 echo "==> Writing ${CONFIG_FILE}"
 cat > "$CONFIG_FILE" <<EOF
 # Hawser Configuration - Edge Mode
@@ -113,9 +112,8 @@ DOCKHAND_SERVER_URL=${DOCKHAND_SERVER_URL}
 TOKEN=${TOKEN}
 BIND_ADDRESS=127.0.0.1
 EOF
-chown root:"${HAWSER_USER}" "$CONFIG_FILE"
-chmod 640 "$CONFIG_FILE"
-
+chmod 600 "$CONFIG_FILE"
+ 
 # --- systemd unit ----------------------------------------------------------------
 echo "==> Installing systemd service"
 cat > /etc/systemd/system/hawser.service <<EOF
@@ -125,31 +123,29 @@ Documentation=https://github.com/Finsys/hawser
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
-
+ 
 [Service]
 Type=simple
-User=${HAWSER_USER}
-Group=docker
 ExecStart=${INSTALL_DIR}/hawser
 Restart=always
 RestartSec=10
 EnvironmentFile=${CONFIG_FILE}
 Environment=DOCKER_CONFIG=${HAWSER_HOME}/.docker
 Environment=HOME=${HAWSER_HOME}
-
+ 
 # Security hardening
 NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/run/docker.sock ${STACKS_DIR} ${HAWSER_HOME} /tmp
-
+ 
 [Install]
 WantedBy=multi-user.target
 EOF
-
+ 
 systemctl daemon-reload
 systemctl enable --now hawser
-
+ 
 echo ""
 echo "Hawser installed and running in Edge mode."
 echo "  Config:  ${CONFIG_FILE}"

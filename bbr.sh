@@ -110,6 +110,8 @@ add_sysctl_if_missing "net.ipv4.tcp_congestion_control" "bbr"
 echo "==> Creating /etc/sysctl.d/99-proxy.conf"
 
 cat > /etc/sysctl.d/99-proxy.conf <<EOF
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
 net.netfilter.nf_conntrack_max = ${CONNTRACK_SIZE}
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
 net.netfilter.nf_conntrack_tcp_timeout_close_wait = 30

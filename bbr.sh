@@ -103,6 +103,7 @@ add_sysctl_if_missing() {
 }
 
 echo "==> Configuring BBR"
+echo tcp_bbr > /etc/modules-load.d/bbr.conf
 add_sysctl_if_missing "net.core.default_qdisc" "fq"
 add_sysctl_if_missing "net.ipv4.tcp_congestion_control" "bbr"
 

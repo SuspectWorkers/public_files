@@ -1,0 +1,5 @@
+mtr -4 -rw -c 1000 212.93.97.105
+ping -4 -c 1000 -i 0.2 iperf.he.net
+iperf3 -4 -c ping.online.net -p 5201 -b 1G -t 60 -C bbr
+#udp
+iperf3 -4 -u -c ping.online.net -p 5201 -b 1G -t 60 -C bbr

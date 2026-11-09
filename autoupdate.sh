@@ -52,11 +52,11 @@ apt-get update -qq
 apt-get install -y -qq unattended-upgrades apt-listchanges ca-certificates curl tar >/dev/null
 
 if [[ "$OS_FAMILY" == "ubuntu" ]]; then
-  ORIGINS='    "${distro_id}:${distro_codename}";
-    "${distro_id}:${distro_codename}-security";
-    "${distro_id}:${distro_codename}-updates";
-    "${distro_id}ESMApps:${distro_codename}-apps-security";
-    "${distro_id}ESM:${distro_codename}-infra-security";'
+  ORIGINS='    "origin=Ubuntu,archive=${distro_codename}";
+    "origin=Ubuntu,archive=${distro_codename}-security";
+    "origin=Ubuntu,archive=${distro_codename}-updates";
+    "origin=UbuntuESMApps,archive=${distro_codename}-apps-security";
+    "origin=UbuntuESM,archive=${distro_codename}-infra-security";'
 else
   ORIGINS='    "origin=Debian,codename=${distro_codename},label=Debian";
     "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";

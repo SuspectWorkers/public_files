@@ -61,10 +61,18 @@ case "$ARCH_RAW" in
   *) echo "Unsupported architecture: $ARCH_RAW" >&2; exit 1 ;;
 esac
 
+# curl с повторами: GitHub иногда отдаёт временные 502/503/504
+CURL=(curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 20)
+
 echo "==> Fetching Hawser (${OS}/${ARCH}, version: ${VERSION})"
 if [[ "$VERSION" == "latest" ]]; then
-  LATEST_VERSION=$(curl -fsSL "https://api.github.com/repos/Finsys/hawser/releases/latest" \
-    | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+  # Сначала через API, при сбое/лимите - через редирект releases/latest
+  LATEST_VERSION=$("${CURL[@]}" "https://api.github.com/repos/Finsys/hawser/releases/latest" 2>/dev/null \
+    | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/' || true)
+  if [[ -z "$LATEST_VERSION" ]]; then
+    LATEST_VERSION=$("${CURL[@]}" -o /dev/null -w '%{url_effective}' "https://github.com/Finsys/hawser/releases/latest" \
+      | sed -E 's|.*/tag/v?||' || true)
+  fi
   if [[ -z "$LATEST_VERSION" ]]; then
     echo "Could not determine latest version" >&2
     exit 1
@@ -78,7 +86,7 @@ fi
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
-curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/hawser.tar.gz"
+"${CURL[@]}" "$DOWNLOAD_URL" -o "$TMP_DIR/hawser.tar.gz"
 tar -xzf "$TMP_DIR/hawser.tar.gz" -C "$TMP_DIR"
 install -m 755 "$TMP_DIR/hawser" "${INSTALL_DIR}/hawser"
 

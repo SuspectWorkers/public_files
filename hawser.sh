@@ -6,6 +6,10 @@
 # Usage:
 #   sudo bash install-hawser-edge.sh
 #
+# Если GitHub не отдаёт архив (504) - скачайте hawser_<ver>_linux_amd64.tar.gz
+# на другой машине, скопируйте на сервер и запустите с HAWSER_TARBALL=/путь/к/архиву
+# (или задайте зеркало через HAWSER_DOWNLOAD_URL).
+#
 # Non-interactive (e.g. provisioning/CI):
 #   sudo HAWSER_SERVER_URL="wss://dockhand.example.com/api/hawser/connect" \
 #        HAWSER_TOKEN="xxxxx" bash install-hawser-edge.sh
@@ -86,7 +90,15 @@ fi
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
-"${CURL[@]}" "$DOWNLOAD_URL" -o "$TMP_DIR/hawser.tar.gz"
+if [[ -n "${HAWSER_TARBALL:-}" ]]; then
+  # Готовый архив, скачанный вручную (если GitHub недоступен с этого сервера)
+  [[ -f "$HAWSER_TARBALL" ]] || { echo "Файл не найден: $HAWSER_TARBALL" >&2; exit 1; }
+  echo "    Используется локальный архив: $HAWSER_TARBALL"
+  cp "$HAWSER_TARBALL" "$TMP_DIR/hawser.tar.gz"
+else
+  # HAWSER_DOWNLOAD_URL - свой URL/зеркало вместо github.com
+  "${CURL[@]}" "${HAWSER_DOWNLOAD_URL:-$DOWNLOAD_URL}" -o "$TMP_DIR/hawser.tar.gz"
+fi
 tar -xzf "$TMP_DIR/hawser.tar.gz" -C "$TMP_DIR"
 install -m 755 "$TMP_DIR/hawser" "${INSTALL_DIR}/hawser"
 

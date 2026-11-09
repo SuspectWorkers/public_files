@@ -142,8 +142,15 @@ esac
 BIN=/usr/local/bin/hawser
 STATE=/var/lib/hawser/version
 
-LATEST=$(curl -fsSL "https://api.github.com/repos/Finsys/hawser/releases/latest" \
-  | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+CURL=(curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors --connect-timeout 20)
+
+# Версия: сначала через API, при сбое/лимите - через редирект releases/latest
+LATEST=$("${CURL[@]}" "https://api.github.com/repos/Finsys/hawser/releases/latest" 2>/dev/null \
+  | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/' || true)
+if [[ -z "$LATEST" ]]; then
+  LATEST=$("${CURL[@]}" -o /dev/null -w '%{url_effective}' "https://github.com/Finsys/hawser/releases/latest" \
+    | sed -E 's|.*/tag/v?||' || true)
+fi
 [[ -n "$LATEST" ]] || { echo "Не удалось определить последнюю версию" >&2; exit 1; }
 
 CURRENT=$(cat "$STATE" 2>/dev/null || true)
@@ -155,7 +162,7 @@ echo "Обновление Hawser: ${CURRENT:-неизвестно} -> ${LATEST}
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-curl -fsSL "https://github.com/Finsys/hawser/releases/download/v${LATEST}/hawser_${LATEST}_linux_${ARCH}.tar.gz" -o "$TMP/hawser.tar.gz"
+"${CURL[@]}" "https://github.com/Finsys/hawser/releases/download/v${LATEST}/hawser_${LATEST}_linux_${ARCH}.tar.gz" -o "$TMP/hawser.tar.gz"
 tar -xzf "$TMP/hawser.tar.gz" -C "$TMP"
 [[ -f "$TMP/hawser" ]] || { echo "В архиве нет бинарника hawser" >&2; exit 1; }
 

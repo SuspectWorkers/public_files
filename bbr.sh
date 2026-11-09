@@ -85,8 +85,28 @@ echo "Using conntrack size: $CONNTRACK_SIZE"
 echo "==> Updating system packages"
 apt update
 
-echo "==> Installing linux-image-amd64"
-apt -y install linux-image-amd64
+echo "==> Detecting OS"
+. /etc/os-release
+case "${ID}" in
+    ubuntu)
+        KERNEL_PKG="linux-image-generic"
+        ;;
+    debian)
+        KERNEL_PKG="linux-image-$(dpkg --print-architecture)"
+        ;;
+    *)
+        # Derivatives (Mint, Pop!_OS, Kali, etc.)
+        case "${ID_LIKE}" in
+            *ubuntu*) KERNEL_PKG="linux-image-generic" ;;
+            *debian*) KERNEL_PKG="linux-image-$(dpkg --print-architecture)" ;;
+            *) echo "Unsupported OS: ${ID}"; exit 1 ;;
+        esac
+        ;;
+esac
+echo "Detected: ${PRETTY_NAME:-$ID} -> kernel package: ${KERNEL_PKG}"
+
+echo "==> Installing ${KERNEL_PKG}"
+apt -y install "${KERNEL_PKG}"
 
 SYSCTL_CONF="/etc/sysctl.conf"
 

@@ -14,6 +14,8 @@
 # Переменные окружения (необязательно):
 #   AUTO_REBOOT=true|false     перезагрузка при необходимости (по умолчанию true)
 #   REBOOT_TIME=04:00          время перезагрузки
+#   PRUNE_DOCKER=true|false    перед перезагрузкой выполнять docker system prune -af
+#                              (по умолчанию true; тома НЕ удаляются)
 #   HAWSER_UPDATE_TIME=03:30   время запуска обновления Hawser
 #   HAWSER_UPDATE_DELAY=30m    случайная задержка таймера Hawser
 # ---------------------------------------------------------------------------
@@ -21,6 +23,7 @@ set -euo pipefail
 
 AUTO_REBOOT="${AUTO_REBOOT:-true}"
 REBOOT_TIME="${REBOOT_TIME:-04:00}"
+PRUNE_DOCKER="${PRUNE_DOCKER:-true}"
 HAWSER_UPDATE_TIME="${HAWSER_UPDATE_TIME:-03:30}"
 HAWSER_UPDATE_DELAY="${HAWSER_UPDATE_DELAY:-30m}"
 
@@ -77,10 +80,9 @@ Unattended-Upgrade::Origins-Pattern {
 ${ORIGINS}
 };
 
-// Ядро применяется только после перезагрузки
-Unattended-Upgrade::Automatic-Reboot "${AUTO_REBOOT}";
-Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
-Unattended-Upgrade::Automatic-Reboot-Time "${REBOOT_TIME}";
+// Перезагрузкой управляет autoupdate-reboot.timer (чтобы перед ней
+// можно было выполнить docker system prune), поэтому здесь она выключена
+Unattended-Upgrade::Automatic-Reboot "false";
 
 Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
@@ -120,6 +122,66 @@ PY
   else
     echo "==> Docker: добавьте \"live-restore\": true в ${DAEMON_JSON} вручную (нет python3)"
   fi
+fi
+
+# --- Перезагрузка после обновлений (+ docker prune) -------------------------
+REBOOT_SCRIPT=/usr/local/sbin/autoupdate-reboot.sh
+
+if [[ "$AUTO_REBOOT" == "true" ]]; then
+  echo "==> Настройка автоперезагрузки в ${REBOOT_TIME} (docker prune: ${PRUNE_DOCKER})"
+
+  {
+    echo '#!/usr/bin/env bash'
+    echo "PRUNE_DOCKER=${PRUNE_DOCKER}"
+    cat <<'RBEOF'
+# Перезагружает сервер, если после обновлений это требуется (новое ядро и т.п.).
+# Перед перезагрузкой при PRUNE_DOCKER=true чистит Docker: удаляет остановленные
+# контейнеры, неиспользуемые сети и ВСЕ неиспользуемые образы. Тома не трогаются.
+set -uo pipefail
+
+if [[ ! -f /var/run/reboot-required ]]; then
+  echo "Перезагрузка не требуется"
+  exit 0
+fi
+
+if [[ "$PRUNE_DOCKER" == "true" ]] && command -v docker >/dev/null 2>&1; then
+  echo "==> docker system prune -af"
+  timeout 600 docker system prune -af || echo "docker prune не выполнен (продолжаю)" >&2
+fi
+
+echo "==> Перезагрузка"
+systemctl reboot
+RBEOF
+  } > "$REBOOT_SCRIPT"
+  chmod 755 "$REBOOT_SCRIPT"
+
+  cat > /etc/systemd/system/autoupdate-reboot.service <<EOF
+[Unit]
+Description=Reboot after updates (with optional docker prune)
+After=hawser-update.service unattended-upgrades.service
+
+[Service]
+Type=oneshot
+ExecStart=${REBOOT_SCRIPT}
+EOF
+
+  cat > /etc/systemd/system/autoupdate-reboot.timer <<EOF
+[Unit]
+Description=Daily reboot check after updates
+
+[Timer]
+OnCalendar=*-*-* ${REBOOT_TIME}
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now autoupdate-reboot.timer
+else
+  echo "==> Автоперезагрузка отключена"
+  systemctl disable --now autoupdate-reboot.timer >/dev/null 2>&1 || true
 fi
 
 # --- Hawser: скрипт обновления + systemd ------------------------------------
@@ -224,7 +286,9 @@ unattended-upgrade --dry-run 2>&1 | tail -n 5 || true
 
 echo
 echo "Готово."
-echo "  Обновления ОС/ядра/Docker: unattended-upgrades (авторебут: ${AUTO_REBOOT}, ${REBOOT_TIME})"
+echo "  Обновления ОС/ядра/Docker: unattended-upgrades"
+echo "  Авторебут: ${AUTO_REBOOT} (${REBOOT_TIME}), docker prune перед ребутом: ${PRUNE_DOCKER}"
+echo "  Лог ребута:     journalctl -u autoupdate-reboot"
 echo "  Лог apt:        /var/log/unattended-upgrades/unattended-upgrades.log"
 echo "  Таймеры:        systemctl list-timers 'apt-daily*' hawser-update.timer"
 echo "  Лог Hawser:     journalctl -u hawser-update"
